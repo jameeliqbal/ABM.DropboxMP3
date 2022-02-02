@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.31410.357
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ABM.DropboxMP3.ConsoleApp", "ABM.DropboxMP3.ConsoleApp\ABM.DropboxMP3.ConsoleApp.csproj", "{37C32F0D-D3DB-4ADC-A2DC-5173BFDFAD9B}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{37C32F0D-D3DB-4ADC-A2DC-5173BFDFAD9B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{37C32F0D-D3DB-4ADC-A2DC-5173BFDFAD9B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{37C32F0D-D3DB-4ADC-A2DC-5173BFDFAD9B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{37C32F0D-D3DB-4ADC-A2DC-5173BFDFAD9B}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {E50FDE4F-3ADF-47AE-B497-BF28C7F43F5E}
+	EndGlobalSection
+EndGlobal
