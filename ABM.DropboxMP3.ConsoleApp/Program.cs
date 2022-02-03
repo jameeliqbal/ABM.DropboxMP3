@@ -3,6 +3,7 @@ using Dropbox.Api.Files;
 using IKriv.Threading.Tasks;
 using System;
 using System.Collections.Generic;
+using System.Configuration;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
@@ -15,11 +16,14 @@ namespace ABM.DropboxMP3.ConsoleApp
     class Program
     {
         // Add an ApiKey (from https://www.dropbox.com/developers/apps) here
-        public string ApiKey { get; set; } = "kiq8ynfjfaiz26m";
-        public string AppToken { get; set; } = "sl.BBUDB0zT_uZtzRuO9nSVe7igEUmwO8xDtheGueRjxIXrAFHUapqYxiuYhEzB7nKBrrZHXxS5lpB6onRNWxw6Hag0NjrETMVSSvDdlks2AHGcMwxDIoJb_dbrl1_jjrLESYpoej8";
-        public string AppSecret { get; set; } = "gqd54jst58hs0g4";
-
+        public string ApiKey { get; set; } 
+        public string AppToken { get; set; }
+        public string AppSecret { get; set; }
+        public int WaitingTimeForConverting { get; set; }
+        public string ConvertedFileExtension { get; set; }
         [STAThread]
+
+
         static int Main(string[] args)
         {
 
@@ -45,7 +49,7 @@ namespace ABM.DropboxMP3.ConsoleApp
         private async Task<int> Run()
         {
             DropboxCertHelper.InitializeCertPinning();
-
+            InitializeSettings();
 
             // Specify socket level timeout which decides maximum waiting time when no bytes are
             // received by the socket.
@@ -73,9 +77,9 @@ namespace ABM.DropboxMP3.ConsoleApp
 
                 var filename = await UploadMP3(client);
 
-                await ListRootFolder(client);
+                await ListFilesInDropboxFolder(client);
 
-                var convertedFile = await WaitForFileToConvert(client, filename, new CancellationTokenSource());
+                var convertedFile = await WaitForFileToConvert(client, filename, WaitingTimeForConverting, ConvertedFileExtension, new CancellationTokenSource());
 
                 Console.WriteLine("Press any key to download file");
                 Console.ReadKey();
@@ -111,6 +115,15 @@ namespace ABM.DropboxMP3.ConsoleApp
             return 0;
         }
 
+        private void InitializeSettings()
+        {
+            ApiKey = ConfigurationManager.AppSettings["ApiKey"];
+            AppToken= ConfigurationManager.AppSettings["AppToken"];
+            AppSecret= ConfigurationManager.AppSettings["AppSecret"];
+            WaitingTimeForConverting = int.Parse(ConfigurationManager.AppSettings["WaitingTimeForConverting"]);
+            ConvertedFileExtension = ConfigurationManager.AppSettings["ConvertedFileExtension"];
+        }
+
         private async Task DeleteFilesOnDropbox(DropboxClient client, IEnumerable<string> filesToDelete)
         {
             try
@@ -133,11 +146,11 @@ namespace ABM.DropboxMP3.ConsoleApp
             }
         }
 
-        private async Task<string> WaitForFileToConvert(DropboxClient client, string filename,CancellationTokenSource cts)
+        private async Task<string> WaitForFileToConvert(DropboxClient client, string filename, int waitingTime, string convertedFileExtension, CancellationTokenSource cts)
         {
             string convertedFilename = string.Empty;
             var ctoken = cts.Token;
-            using (var timer = new TaskTimer(10000).CancelWith(ctoken).Start())
+            using (var timer = new TaskTimer(waitingTime).CancelWith(ctoken).Start())
             {
                 try
                 {
@@ -145,7 +158,7 @@ namespace ABM.DropboxMP3.ConsoleApp
                     foreach (var task in timer)
                     {
                         await task;
-                        convertedFilename = await VerifyIfFileIsConverted(client, filename);
+                        convertedFilename = await VerifyIfFileIsConverted(client, filename, convertedFileExtension);
                         if (!string.IsNullOrEmpty(convertedFilename)) 
                         {
                             cts.Cancel();
@@ -175,7 +188,7 @@ namespace ABM.DropboxMP3.ConsoleApp
                     var content= await response.GetContentAsByteArrayAsync();
                     File.WriteAllBytes(convertedFile, content);
                 }
-                Console.WriteLine("!!! File downloaded successfully");
+                Console.WriteLine("!!! File downloaded successfully !!!");
             }
             catch 
             {
@@ -184,9 +197,9 @@ namespace ABM.DropboxMP3.ConsoleApp
             }
         }
 
-        private async Task<string> VerifyIfFileIsConverted(DropboxClient client, string filename)
+        private async Task<string> VerifyIfFileIsConverted(DropboxClient client, string filename,string convertedFileExtension)
         {
-            string convertedFileName = Path.GetFileNameWithoutExtension(filename) + ".conv";
+            string convertedFileName = Path.GetFileNameWithoutExtension(filename) + convertedFileExtension;
             try
             {
 
@@ -278,7 +291,7 @@ namespace ABM.DropboxMP3.ConsoleApp
 
         }
 
-        async Task ListRootFolder(DropboxClient dbx)
+        async Task ListFilesInDropboxFolder(DropboxClient dbx)
         {
             var list = await dbx.Files.ListFolderAsync(string.Empty);
             Console.WriteLine("Listing files...");
