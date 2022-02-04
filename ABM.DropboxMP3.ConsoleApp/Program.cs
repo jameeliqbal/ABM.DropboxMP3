@@ -1,4 +1,6 @@
-﻿using Dropbox.Api;
+﻿
+
+using Dropbox.Api;
 using Dropbox.Api.Files;
 using IKriv.Threading.Tasks;
 using System;
@@ -21,9 +23,8 @@ namespace ABM.DropboxMP3.ConsoleApp
         public string AppSecret { get; set; }
         public int WaitingTimeForConverting { get; set; }
         public string ConvertedFileExtension { get; set; }
+       
         [STAThread]
-
-
         static int Main(string[] args)
         {
 
@@ -32,6 +33,8 @@ namespace ABM.DropboxMP3.ConsoleApp
             try
             {
                 Console.WriteLine("*** Upload file to Dropbox Demo ***");
+
+                //run in a seperate thread to avoid freezing the ui
                 var task = Task.Run((Func<Task<int>>)instance.Run);
 
                 task.Wait();
@@ -62,11 +65,15 @@ namespace ABM.DropboxMP3.ConsoleApp
 
             try
             {
+                //create the configuration object. UserAgent parameter can be any name.
                 var config = new DropboxClientConfig("AyeshwaryaAudioConvertor")
                 {
                     HttpClient = httpClient
                 };
+
+                //instantiate the client
                 var client = new DropboxClient(AppToken, null, ApiKey, AppSecret, config);
+
                 //// This call should succeed since the correct scope has been acquired
                 await GetCurrentAccount(client);
 
@@ -75,16 +82,21 @@ namespace ABM.DropboxMP3.ConsoleApp
                 Console.WriteLine("!!! Account Authenticated and connected to DropBox !!!");
                 Console.WriteLine("******************************************************");
 
+                //accept filename and upload the file
                 var filename = await UploadMP3(client);
 
+                //display list of files in the dropbox folder once the file is uploaded.
                 await ListFilesInDropboxFolder(client);
 
+                //timer to wait for file to get converted
                 var convertedFile = await WaitForFileToConvert(client, filename, WaitingTimeForConverting, ConvertedFileExtension, new CancellationTokenSource());
 
+                //once the converted file is found, download it.
                 Console.WriteLine("Press any key to download file");
                 Console.ReadKey();
                 await DownloadConvertedFile(client, convertedFile);
 
+                //delete the original and converted files from the dropbox folder.
                 var filesToDelete = new List<string>{ filename, convertedFile };
                 await DeleteFilesOnDropbox(client, filesToDelete);
 
@@ -116,7 +128,7 @@ namespace ABM.DropboxMP3.ConsoleApp
         }
 
         private void InitializeSettings()
-        {
+        {//read the values from config file
             ApiKey = ConfigurationManager.AppSettings["ApiKey"];
             AppToken= ConfigurationManager.AppSettings["AppToken"];
             AppSecret= ConfigurationManager.AppSettings["AppSecret"];
@@ -124,127 +136,6 @@ namespace ABM.DropboxMP3.ConsoleApp
             ConvertedFileExtension = ConfigurationManager.AppSettings["ConvertedFileExtension"];
         }
 
-        private async Task DeleteFilesOnDropbox(DropboxClient client, IEnumerable<string> filesToDelete)
-        {
-            try
-            {
-                Console.WriteLine("Deleting Files on Dropbox...");
-                var ftdList = new List<DeleteArg>();
-                foreach (var item in filesToDelete)
-                {
-                    var ftd = new DeleteArg("/" + item);
-                    ftdList.Add(ftd);
-                }
-
-                await client.Files.DeleteBatchAsync(ftdList);
-                Console.WriteLine("!!! Files Deleted Successfully !!!");
-            }
-            catch 
-            {
-
-                throw;
-            }
-        }
-
-        private async Task<string> WaitForFileToConvert(DropboxClient client, string filename, int waitingTime, string convertedFileExtension, CancellationTokenSource cts)
-        {
-            string convertedFilename = string.Empty;
-            var ctoken = cts.Token;
-            using (var timer = new TaskTimer(waitingTime).CancelWith(ctoken).Start())
-            {
-                try
-                {
-                    ctoken.ThrowIfCancellationRequested();
-                    foreach (var task in timer)
-                    {
-                        await task;
-                        convertedFilename = await VerifyIfFileIsConverted(client, filename, convertedFileExtension);
-                        if (!string.IsNullOrEmpty(convertedFilename)) 
-                        {
-                            cts.Cancel();
-                        } 
-                    }
-                }
-                catch (TaskCanceledException)
-                {
-                    return convertedFilename;
-                }
-                catch
-                {
-                    throw;
-                }
-            }
-
-            return string.Empty;
-        }
-
-        private async Task DownloadConvertedFile(DropboxClient client, string convertedFile)
-        {
-            try
-            {
-                Console.WriteLine("Downloading file: " + convertedFile);
-                using (var response = await client.Files.DownloadAsync( "/" + convertedFile))
-                {
-                    var content= await response.GetContentAsByteArrayAsync();
-                    File.WriteAllBytes(convertedFile, content);
-                }
-                Console.WriteLine("!!! File downloaded successfully !!!");
-            }
-            catch 
-            {
-
-                throw;
-            }
-        }
-
-        private async Task<string> VerifyIfFileIsConverted(DropboxClient client, string filename,string convertedFileExtension)
-        {
-            string convertedFileName = Path.GetFileNameWithoutExtension(filename) + convertedFileExtension;
-            try
-            {
-
-                var list = await client.Files.ListFolderAsync(string.Empty);
-                var file= list.Entries.SingleOrDefault(f => f.Name == convertedFileName);
-                if (file != null)
-                {
-                    Console.WriteLine("!!! File converted successfully !!!");
-                    return convertedFileName;
-                }
-                else
-                {
-                    Console.WriteLine("Waiting for file...");
-                    return string.Empty;
-                }
-
-               
-            }
-            catch 
-            {
-
-                throw;
-            }
-        }
-
-        private async Task<string> UploadMP3(DropboxClient client)
-        {
-            string filename = string.Empty;
-            try
-            {
-                Console.WriteLine("Enter a filename:");
-                  filename = Console.ReadLine();
-                Console.WriteLine(filename);
-
-
-                await Upload(client, null, filename, null);
-
-            }
-            catch
-            {
-                throw;
-                
-            }
-            return filename;
-        }
 
         /// <summary>
         /// Gets information about the currently authorized account.
@@ -291,10 +182,58 @@ namespace ABM.DropboxMP3.ConsoleApp
 
         }
 
+
+        /// <summary>
+        /// Upload files to dropbox
+        /// <para>
+        /// Gets filename as input from user and uploads the file to dropbox
+        /// </para>
+        /// </summary>
+        /// <param name="client">The Dropbox client.</param>
+        /// <returns>A string containing the name of the uploaded file</returns>
+        private async Task<string> UploadMP3(DropboxClient client)
+        {
+
+            string filename = string.Empty;
+            try
+            {
+                //accept the filename as input
+                Console.WriteLine("Enter a filename:");
+                filename = Console.ReadLine();
+                Console.WriteLine(filename);
+
+                // upload it to dropbox
+                using (var mem = new MemoryStream(File.ReadAllBytes(filename)))
+                {
+                    var updated = await client.Files.UploadAsync(
+                          "/" + filename,
+                        WriteMode.Overwrite.Instance,
+                        body: mem);
+                    Console.WriteLine("Saved {0}/{1} rev {2}", null, filename, updated.Rev);
+                }
+            }
+            catch
+            {
+                throw;
+
+            }
+            return filename;
+        }
+
+
+        /// <summary>
+        /// List files on dropbox
+        /// <para>
+        /// Gets a list of files and folders on dropbox
+        /// </para>
+        /// </summary>
+        /// <param name="client">The Dropbox client.</param>
+        /// <returns>An asynchronous task.</returns>
         async Task ListFilesInDropboxFolder(DropboxClient dbx)
         {
             var list = await dbx.Files.ListFolderAsync(string.Empty);
             Console.WriteLine("Listing files...");
+
             // show folders then files
             foreach (var item in list.Entries.Where(i => i.IsFolder))
             {
@@ -307,16 +246,162 @@ namespace ABM.DropboxMP3.ConsoleApp
             }
         }
 
-        async Task Upload(DropboxClient client, string folder, string file, string content)
+        /// <summary>
+        /// Waits for a specified period of time and calls VerifyIfFileIsConverted() method
+        /// <para>
+        /// This method waits for a specified period of time and checks the dropbox folder
+        /// to see if the converted file is created.  If not it waits further.
+        /// The timer is set using TaskTimer which is passed the waiting period and cancellation token.
+        /// After the task is executed at the specified time the cancellation token is used to stop the task.
+        /// </para>
+        /// </summary>
+        /// <param name="client">The Dropbox client.</param>
+        /// <param name="filename">The name of the file that is uploaded</param>
+        /// <param name="waitingTime">The time to wait before checking for the converted file</param>
+        /// <param name="convertedFileExtension">The extension of the converted file to look for</param>
+        /// <param name="cts">The cancellation token source used to cancel the task on completion</param> 
+        /// <returns>A string containing the file name of the converted file.</returns>
+        private async Task<string> WaitForFileToConvert(DropboxClient client, string filename, int waitingTime, string convertedFileExtension, CancellationTokenSource cts)
         {
-            using (var mem = new MemoryStream(File.ReadAllBytes(file)))
+            string convertedFilename = string.Empty;
+            //get the cancellation token from the cancellation token source
+            var ctoken = cts.Token;
+
+            //start the timer
+            using (var timer = new TaskTimer(waitingTime).CancelWith(ctoken).Start())
             {
-                var updated = await client.Files.UploadAsync(
-                      "/" + file,
-                    WriteMode.Overwrite.Instance,
-                    body: mem);
-                Console.WriteLine("Saved {0}/{1} rev {2}", folder, file, updated.Rev);
+                try
+                {
+                    //invoke the cancellation error if task is cancelled.
+                    ctoken.ThrowIfCancellationRequested();
+
+                    //wait for the task
+                    foreach (var task in timer)
+                    {
+                        await task;
+
+                        //call the method when the time is reached
+                        convertedFilename = await VerifyIfFileIsConverted(client, filename, convertedFileExtension);
+                        if (!string.IsNullOrEmpty(convertedFilename))
+                        {
+                            //stop the timer once the verification is complete
+                            cts.Cancel();
+                        }
+                    }
+                }
+                catch (TaskCanceledException)
+                {
+                    return convertedFilename;
+                }
+                catch
+                {
+                    throw;
+                }
+            }
+
+            return string.Empty;
+        }
+
+
+        /// <summary>
+        /// Look for converted file in dropbox folder
+        /// <para>
+        /// Looks up for the converted file in the dropbox folder 
+        /// </para>
+        /// </summary>
+        /// <param name="client">The Dropbox client.</param>
+        /// <param name="filename">The name of the file that is uploaded</param>
+        /// <param name="convertedFileExtension">The extension of the converted file to look for</param>
+        /// <returns>A string containing the file name of the converted file.</returns>
+        private async Task<string> VerifyIfFileIsConverted(DropboxClient client, string filename, string convertedFileExtension)
+        {
+            string convertedFileName = Path.GetFileNameWithoutExtension(filename) + convertedFileExtension;
+            try
+            {
+                //look for the converted file on dropbox folder
+                var list = await client.Files.ListFolderAsync(string.Empty);
+                var file = list.Entries.SingleOrDefault(f => f.Name == convertedFileName);
+                if (file != null)
+                {
+                    Console.WriteLine("!!! File converted successfully !!!");
+                    return convertedFileName;
+                }
+                else
+                {
+                    Console.WriteLine("Waiting for file...");
+                    return string.Empty;
+                }
+
+
+            }
+            catch
+            {
+
+                throw;
             }
         }
+
+
+        /// <summary>
+        /// Downlaod converted file from dropbox
+        /// <para>
+        /// Downloads the converted file from dropbox  
+        /// </para>
+        /// </summary>
+        /// <param name="client">The Dropbox client.</param>
+        /// <param name="convertedFile">Name of the file to download</param>
+        /// <returns>An asynchronous task.</returns>
+        private async Task DownloadConvertedFile(DropboxClient client, string convertedFile)
+        {
+            try
+            {
+                Console.WriteLine("Downloading file: " + convertedFile);
+                using (var response = await client.Files.DownloadAsync( "/" + convertedFile))
+                {
+                    var content= await response.GetContentAsByteArrayAsync();
+                    File.WriteAllBytes(convertedFile, content);
+                }
+                Console.WriteLine("!!! File downloaded successfully !!!");
+            }
+            catch 
+            {
+
+                throw;
+            }
+        }
+
+
+        /// <summary>
+        /// Delete files on dropbox
+        /// <para>
+        /// Deletes the original and converted files on dropbox in bulk
+        /// </para>
+        /// </summary>
+        /// <param name="client">The Dropbox client.</param>
+        /// <param name="filesToDelete">List of files to delete</param>
+        /// <returns>An asynchronous task.</returns>
+        private async Task DeleteFilesOnDropbox(DropboxClient client, IEnumerable<string> filesToDelete)
+        {
+            try
+            {
+                Console.WriteLine("Deleting Files on Dropbox...");
+                var ftdList = new List<DeleteArg>();
+                foreach (var item in filesToDelete)
+                {
+                    var ftd = new DeleteArg("/" + item);
+                    ftdList.Add(ftd);
+                }
+
+                await client.Files.DeleteBatchAsync(ftdList);
+                Console.WriteLine("!!! Files Deleted Successfully !!!");
+            }
+            catch
+            {
+
+                throw;
+            }
+        }
+
+
     }
 }
